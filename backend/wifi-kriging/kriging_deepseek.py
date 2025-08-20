@@ -30,8 +30,7 @@ def generate_sample_data(num_points=100, x_range=(0, 100), y_range=(0, 100), see
     x_norm = (x_coords - x_range[0]) / (x_range[1] - x_range[0])
     y_norm = (y_coords - y_range[0]) / (y_range[1] - y_range[0])
     
-    values = (np.sin(2 * np.pi * x_norm) * np.cos(3 * np.pi * y_norm) + 
-             0.5 * np.sin(5 * np.pi * x_norm) + 0.5 * np.cos(7 * np.pi * y_norm))
+    values = (np.sin(2 * np.pi * x_norm) * np.cos(3 * np.pi * y_norm) + 0.5 * np.sin(5 * np.pi * x_norm) + 0.5 * np.cos(7 * np.pi * y_norm))
     
     # Scale and shift to ensure all values are positive
     values = (values - np.min(values)) * 10 + 1
