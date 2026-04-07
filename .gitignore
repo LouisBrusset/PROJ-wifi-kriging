@@ -1,20 +1,27 @@
-# Python cache
+# Python
 __pycache__/
 *.py[cod]
 build/
 dist/
 wheels/
-*.egg-info
+*.egg-info/
 
-# Virtual env
+# Environnements virtuels
 .venv/
 venv/
 .env/
 env/
 
+# Variables d'environnement (contient des secrets)
+backend/.env
+
+# Uploads utilisateur
+backend/uploads/
+
 # IDEs
 .vscode/
 *.swp
+*.idea/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -23,10 +30,19 @@ env/
 # Logs
 *.log
 
-# User generated files
-#
+# React Native / Android
+KrigiFi/node_modules/
+KrigiFi/android/build/
+KrigiFi/android/app/build/
+KrigiFi/android/.gradle/
+KrigiFi/.bundle/
+KrigiFi/android/local.properties
 
-# Large datasets
-## NetCDF files (all .nc files)
+# iOS
+KrigiFi/ios/Pods/
+KrigiFi/ios/build/
 
-## But keep this specific file
+# Keystores (ne jamais committer)
+*.keystore
+*.jks
+KrigiFi/android/app/debug.keystore
