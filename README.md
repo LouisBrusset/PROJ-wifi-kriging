@@ -1,188 +1,213 @@
 # KrigiFi – Cartographie WiFi par Krigeage
 
-Application mobile Android (React Native + TypeScript) permettant de mesurer et visualiser la couverture WiFi d'un bâtiment sous forme de heatmap interpolée par krigeage ordinaire.
+Application mobile Android (React Native + TypeScript) permettant de cartographier la couverture WiFi d'un bâtiment. L'utilisateur trace le plan de son espace à l'aide des capteurs inertiels du téléphone, relève le signal WiFi en se déplaçant, puis génère une heatmap interpolée par **krigeage ordinaire**.
+
+> Documentation technique détaillée → [TECHNIQUE.md](TECHNIQUE.md)
 
 ---
 
 ## Fonctionnalités
 
-### 1. Gestion des bâtiments
-- Créer plusieurs bâtiments / lieux
-- Nommer et décrire chaque espace
-- Accès rapide au plan, aux mesures et à la heatmap depuis l'écran d'accueil
-
-### 2. Construction du plan au sol
-
-**Mode PDR (Pedestrian Dead Reckoning)** — tracer la pièce en marchant :
-- L'utilisateur marche le long des murs en tenant le téléphone à la verticale
-- L'**accéléromètre** détecte les pas (comptage par pics de magnitude)
-- Le **gyroscope** intègre les changements de direction (cap en degrés)
-- Les virages supérieurs à 60° créent automatiquement un coin
-- Le plan se trace en temps réel sur un canvas SVG
-
-**Mode image** — importer un plan existant :
-- Sélectionner une photo depuis la galerie
-- Uploader l'image sur le serveur
-- Calibrer l'échelle (mètres par pixel) pour des mesures à l'échelle réelle
-
-### 3. Mesure du signal WiFi
-
-- Démarrer la capture : l'app enregistre la position (PDR) et le RSSI WiFi
-- **Mesure automatique toutes les 2 secondes** pendant le déplacement
-- Médiane sur 3 mesures pour réduire le bruit
-- Compatible WiFi (dBm via `WifiManager`) et données mobiles (4G estimé)
-- Indicateur visuel de qualité du signal (Excellent / Bon / Moyen / Faible)
-- Envoi des mesures au backend par lot pour optimiser les requêtes
-
-### 4. Heatmap par krigeage
-
-- **Krigeage ordinaire** (`pykrige`) sur les points de mesure enregistrés
-- Choix du modèle de variogramme : `spherical`, `gaussian`, `exponential`
-- Choix de la résolution de la grille : 30×30, 50×50, 80×80
-- Visualisation par gradient de couleurs : bleu (faible) → rouge (fort)
-- Superposition des points de mesure bruts en option
-- Statistiques : RSSI min/max, modèle utilisé
+| Écran | Description |
+|---|---|
+| **Accueil** | Gestion des bâtiments (créer, lister, supprimer) |
+| **Plan** | Tracer les pièces par marche (PDR) ou importer une image |
+| **Mesure** | Capturer le signal WiFi/4G en se déplaçant |
+| **Carte** | Générer et visualiser la heatmap par krigeage |
 
 ---
 
-## Architecture technique
+## Prérequis
 
-```
-PROJ-wifi-kriging/
-├── backend/                    # API FastAPI + PostgreSQL
-│   ├── main.py                 # Point d'entrée FastAPI
-│   ├── database.py             # Connexion SQLAlchemy
-│   ├── modeles.py              # Modèles ORM
-│   ├── schemas.py              # Schémas Pydantic
-│   ├── routers/
-│   │   ├── batiments.py        # CRUD bâtiments
-│   │   ├── plans.py            # Pièces + upload image
-│   │   ├── mesures.py          # Mesures WiFi
-│   │   └── krigeage.py         # Calcul heatmap
-│   ├── kriging/
-│   │   └── interpolation.py   # Krigeage ordinaire (pykrige)
-│   └── requirements.txt
-│
-├── KrigiFi/                    # Application React Native (TSX)
-│   ├── src/
-│   │   ├── types/index.ts      # Interfaces TypeScript
-│   │   ├── services/
-│   │   │   ├── api.ts          # Appels HTTP (axios)
-│   │   │   ├── capteurs.ts     # Abstraction IMU (react-native-sensors)
-│   │   │   └── wifi.ts         # Mesure WiFi (wifi-reborn + netinfo)
-│   │   ├── hooks/
-│   │   │   ├── useImu.ts       # Hook PDR (position par inertie)
-│   │   │   └── useWifi.ts      # Hook mesure WiFi temporisée
-│   │   ├── components/
-│   │   │   ├── DessinateurPlan.tsx   # Canvas SVG du plan
-│   │   │   └── CarteThermique.tsx    # Heatmap SVG colorée
-│   │   ├── screens/
-│   │   │   ├── AccueilScreen.tsx
-│   │   │   ├── PlanScreen.tsx
-│   │   │   ├── MesureScreen.tsx
-│   │   │   └── CarteScreen.tsx
-│   │   └── navigation/
-│   │       └── AppNavigateur.tsx
-│   └── android/                # Build Android natif
-│
-└── Makefile                    # Commandes de développement
-```
+| Outil | Version minimale |
+|---|---|
+| Node.js | ≥ 22.11.0 |
+| Python | ≥ 3.11 |
+| Java JDK | 17 |
+| Android SDK | API 31+ |
+| ADB | ≥ 1.0.41 |
+| PostgreSQL | ≥ 14 |
 
-### Base de données PostgreSQL
-
-| Table            | Contenu                                           |
-|------------------|---------------------------------------------------|
-| `batiments`      | Bâtiments (nom, description)                     |
-| `pieces`         | Pièces polygonales (JSON de points en mètres)    |
-| `images_plan`    | Plans uploadés (chemin, échelle mètres/pixel)    |
-| `mesures_wifi`   | Mesures RSSI (x, y, dBm, SSID, horodatage)       |
+Environnement cible : **WSL2 sous Windows 11**, avec Android SDK installé côté Windows.
 
 ---
 
 ## Installation
 
-### Prérequis
-
-| Outil       | Version     |
-|-------------|-------------|
-| Node.js     | ≥ 22.11.0   |
-| Python      | ≥ 3.11      |
-| Java (JDK)  | 17          |
-| Android SDK | API 34+     |
-| ADB         | ≥ 1.0.41    |
-| PostgreSQL  | ≥ 14        |
-
-### Installation complète
-
 ```bash
-# Clone du dépôt
+# 1. Cloner le dépôt
 git clone <url>
 cd PROJ-wifi-kriging
 
-# Setup complet (venv Python + npm install)
+# 2. Installer backend Python + dépendances npm
 make setup
 
-# Configurer la base de données
+# 3. Configurer la base de données
 cp backend/.env.example backend/.env
-# Éditer backend/.env avec votre DATABASE_URL
+# Éditer backend/.env → ajuster DATABASE_URL si besoin
 
-# Créer la base PostgreSQL
+# 4. Créer l'utilisateur et la base PostgreSQL
 make db-init
-
-# (Alternative manuelle PostgreSQL)
-psql -U postgres -c "CREATE USER kriging_user WITH PASSWORD 'motdepasse';"
-psql -U postgres -c "CREATE DATABASE kriging_wifi OWNER kriging_user;"
+# (demande le mot de passe sudo)
 ```
 
 ---
 
-## Lancement
+## Lancer l'application
 
-Dans **3 terminaux** séparés :
+Ouvrir **3 terminaux WSL2** :
 
 ```bash
-# Terminal 1 – Backend API
+# Terminal 1 — API backend (hot-reload)
 make backend
 
-# Terminal 2 – Metro Bundler
+# Terminal 2 — Metro bundler React Native
 make metro
 
-# Terminal 3 – Application Android (émulateur ou appareil connecté)
+# Terminal 3 — Compiler et installer sur l'appareil
 make android
 ```
 
-> **WSL2** : Le backend écoute sur `0.0.0.0:8000`. L'app React Native utilise `10.0.2.2:8000` pour atteindre l'hôte Windows depuis l'émulateur Android.
+Après le premier build (~5-10 min), les suivants prennent 1-2 min grâce au cache Gradle.
+
+---
+
+## Connexion téléphone → backend (WSL2)
+
+Le backend tourne dans WSL2 ; le téléphone doit pouvoir l'atteindre. Il existe deux cas selon la connexion USB ou WiFi.
+
+### Cas 1 – Téléphone branché en USB (recommandé)
+
+Le pont USB est géré par ADB côté **Windows**. Il faut créer un tunnel en deux étapes :
+
+**Étape A – Port forwarding Windows → WSL2** (PowerShell admin) :
+```powershell
+# Récupérer l'IP WSL2 (change à chaque redémarrage)
+wsl hostname -I
+
+# Créer le forwarding
+netsh interface portproxy delete v4tov4 listenport=8000 listenaddress=127.0.0.1
+netsh interface portproxy add v4tov4 listenport=8000 listenaddress=127.0.0.1 connectport=8000 connectaddress=<IP_WSL2>
+
+# Optionnel : autoriser le port dans le pare-feu Windows
+New-NetFirewallRule -DisplayName "KrigiFi" -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Allow
+```
+
+**Étape B – Tunnel ADB reverse** (terminal Windows ou WSL2) :
+```bash
+adb reverse tcp:8000 tcp:8000
+```
+
+**Résultat** :
+```
+Téléphone:localhost:8000
+    → [adb reverse] → Windows:127.0.0.1:8000
+    → [netsh portproxy] → WSL2:<IP_WSL2>:8000
+    → FastAPI ✓
+```
+
+> `make tunnel` dans WSL2 affiche les commandes exactes avec l'IP WSL2 du moment.
+
+**À répéter après chaque :**
+- Redémarrage du PC (l'IP WSL2 change)
+- Reconnexion du câble USB (`adb reverse` se réinitialise)
+
+---
+
+### Cas 2 – Téléphone connecté en WiFi (ADB over WiFi)
+
+Activer le débogage WiFi sur le téléphone (`Paramètres → Options développeur → Débogage sans fil`), puis depuis Windows :
+
+```powershell
+adb connect <IP_TELEPHONE>:5555
+adb reverse tcp:8000 tcp:8000
+```
+
+Le reste est identique au cas USB. L'IP du téléphone doit être sur le même réseau local que le PC.
+
+---
+
+### Cas 3 – Mirroring Windows (Scrcpy, Phone Link…)
+
+Si l'affichage est mirroré via un outil Windows (ex: scrcpy, Samsung DeX, Phone Link), ADB tourne côté **Windows**, pas WSL2. Il faut donc :
+
+1. Lancer `adb reverse` depuis un **terminal PowerShell Windows** (pas WSL2)
+2. Vérifier que le port forwarding `netsh` est bien actif (étape A ci-dessus)
+3. Depuis WSL2, tester la connectivité :
+
+```bash
+# Depuis WSL2 — doit répondre {"statut":"ok"}
+curl http://localhost:8000/sante
+```
+
+---
+
+### Diagnostic rapide
+
+```bash
+# Backend accessible depuis WSL2 ?
+curl http://localhost:8000/sante
+
+# Appareil détecté par ADB ?
+adb devices
+
+# Tunnel reverse actif ?
+adb reverse --list
+
+# IP WSL2 actuelle
+hostname -I
+
+# Forwarding Windows actif ? (PowerShell)
+netsh interface portproxy show all
+```
+
+---
+
+### Erreurs courantes
+
+| Erreur | Cause | Solution |
+|---|---|---|
+| `Impossible de contacter le serveur` | `adb reverse` absent ou expiré | Relancer `adb reverse tcp:8000 tcp:8000` |
+| `adb: protocol fault` | Serveur ADB WSL2 et Windows en conflit | `adb kill-server && adb start-server` |
+| `Address already in use` (port 8000) | Processus Windows sur ce port | `netsh interface portproxy delete...` puis relancer |
+| `FATAL: Peer authentication failed` | PostgreSQL nécessite `sudo -u postgres` | Utiliser `make db-init` (pas `psql -U postgres` direct) |
+| `Each lower bound must be strictly less` | Points de mesure tous alignés | Marcher en 2D (zigzag), pas en ligne droite |
+| Build Gradle bloqué à 99% | ADB non disponible pendant l'install | `adb start-server` puis `make android` à nouveau |
 
 ---
 
 ## Utilisation pas à pas
 
-1. **Créer un bâtiment** : appuyer sur `+` depuis l'accueil
-2. **Tracer le plan** : choisir "Marcher" → tenir le téléphone vertical → marcher le long des murs → appuyer sur "Enregistrer la pièce"
-3. **Mesurer le WiFi** : appuyer sur "Mesure" → "Démarrer" → marcher librement dans l'espace → "Envoyer"
-4. **Générer la heatmap** : appuyer sur "Carte" → choisir le variogramme → "Calculer la heatmap"
+1. **Créer un bâtiment** → bouton `+` sur l'écran d'accueil
+2. **Tracer le plan** → écran Plan → "Marcher dans la pièce" → marcher le long des murs → "Enregistrer la pièce"
+3. **Mesurer le WiFi** → écran Mesure → "Démarrer" → se déplacer librement en zigzag → "Envoyer"
+4. **Heatmap** → écran Carte → choisir le variogramme → "Calculer la heatmap"
+
+> Pour le krigeage, les points de mesure doivent couvrir une **surface 2D** (pas une simple ligne). Une vingtaine de points répartis en zigzag donne un bon résultat.
 
 ---
 
 ## Commandes Makefile
 
 ```bash
-make setup          # Installation complète
-make backend        # Lancer le backend (hot-reload)
-make metro          # Lancer Metro
-make android        # Lancer sur émulateur/appareil
-make clean          # Nettoyer builds et caches
-make clean-all      # + node_modules et .venv
+make setup          # Installation complète (Python venv + npm)
+make backend        # Lancer le backend FastAPI (hot-reload)
+make metro          # Lancer Metro bundler
+make android        # Compiler et installer sur appareil/émulateur
+make tunnel         # Afficher les commandes de tunnel WSL2↔Windows
 make db-init        # Créer la base PostgreSQL
-make help           # Afficher toutes les commandes
+make clean          # Nettoyer builds Android et cache Metro
+make clean-all      # + node_modules et .venv
+make help           # Lister toutes les commandes
 ```
 
 ---
 
 ## Références
 
-- [Krigeage (Wikipedia)](https://fr.wikipedia.org/wiki/Krigeage)
-- [Variogramme (Wikipedia)](https://fr.wikipedia.org/wiki/Variogramme)
-- [pykrige – Python Kriging Toolkit](https://github.com/GeoStat-Framework/PyKrige)
+- [Krigeage — Wikipedia](https://fr.wikipedia.org/wiki/Krigeage)
+- [Variogramme — Wikipedia](https://fr.wikipedia.org/wiki/Variogramme)
+- [PyKrige — Python Kriging Toolkit](https://github.com/GeoStat-Framework/PyKrige)
 - [react-native-sensors](https://github.com/react-native-sensors/react-native-sensors)
 - [react-native-wifi-reborn](https://github.com/JuanSeBestia/react-native-wifi-reborn)
+- [ADB over WiFi — Android Developers](https://developer.android.com/tools/adb#wireless)
